@@ -1,105 +1,135 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <assert.h>
 #include "stack.h"
+#include <stdlib.h>
+#include <stdio.h>
+#include <assert.h>
+#include <math.h>
 
-const
-	int STACK_LENGTH_ERROR = 1;
-
-stack* stack_create()
+stack* stack_Construct(int amount_of_elements)
 {
-	stack* s = (stack* )malloc(sizeof(stack));
-	assert(s);
-	s->i = 0;
-	s->first = NULL;
-	s->current = NULL;
-		
+	assert(amount_of_elements);
+	stack* s = (stack* )calloc(1, sizeof(stack));
+	s->elements = (stack_elem* )calloc(amount_of_elements, sizeof(stack_elem));
+	s->kanar1 = KANAR;
+	s->kanar2 = KANAR;
+	s->current = 0;
+	s->amount_of_elements = amount_of_elements;
+	s->hashsum = s->kanar1 + s->kanar2 + amount_of_elements;
+	int i = 0;
+	for (i = 0; i < amount_of_elements; i++) s->elements[i] = POISON;
+	
+	assert(!stack_check(s));
 	return s;
 }
 
-void stack_destroy(stack* s)
+int stack_Destroy(stack* s)
 {
 	assert(s);
+	int error_code = stack_check(s);
+	for(int i = 0; i < s->current; i++) s->elements[i] = POISON;
+	free(s->elements);
 	free(s);
+	
+	return error_code;
 }
 
-void stack_put(stack* s, stack_elem_type value)
+int stack_Push(stack* s, stack_elem value)
 {
-	assert(s);
+	assert(s); isfinite(value);
 	
-	if (s->i == 0)
+	if (s->current < s->amount_of_elements)
 	{
-		s->first = (stack_elem* )malloc(sizeof(stack_elem));
-		s->current = s->first;
+		s->elements[s->current] = value;
+		s->current++;
+		s->hashsum = stack_calc_hashsum(s);
+		return stack_check(s);
 	}
 	else
 	{
-		s->current->next = (stack_elem* )malloc(sizeof(stack_elem));
-		s->current = 	s->current->next;
+		stack_help(stack_error_message(ERROR_PUSH_TO_FULL_STACK));
+		return ERROR_PUSH_TO_FULL_STACK;
 	}
-	s->i++;
-	s->current->value = value;
 }
 
-stack_elem_type stack_pop(stack* s)
+stack_elem stack_Pop(stack* s)
 {
-	if (s->i == 1)
+	assert(s);
+	if (s->current > 0)
 	{
-		stack_elem_type value = s->first->value;
-		free(s->first);
-		s->first = NULL;
-		s->current = NULL;
-		s->i = 0;
+		stack_elem value = s->elements[s->current-1];
+		s->current--;
+		s->elements[s->current] = POISON;
+		
+		s->hashsum = stack_calc_hashsum(s);
 		return value;
 	}
 	else
 	{
-		stack_elem_type value = s->current->value;
-		stack_elem* i = s->first;
-		while (i->next != s->current) i = i->next;
-		free(s->current);
-		s->current = i;
-		s->i--;
-		return value;
+		stack_help(stack_error_message(ERROR_POP_FROM_EMPTY_STACK));
+		return POISON;
 	}
 }
 
-int stack_ok(stack* s)
+int	stack_calc_hashsum(stack* s)
 {
 	assert(s);
+	int hashsum = s->kanar1 + s->kanar2 + s->current + s->amount_of_elements;
+	int i = 0;
+	for (i = 0; i < s->current; i++) hashsum += s->elements[i];
 	
-	int n = s->i, j = 0;
-	stack_elem* i = s->first;
-	while (i != s->current)
-	{
-		i = i->next;
-		j++;
-	}
-	if (n != j)
-	{
-		return STACK_LENGTH_ERROR;
-	}
-	
-	return 0;
+	return hashsum;
 }
 
-void stack_dump(stack* s)
+int	stack_check(stack* s)
 {
+	if (s->elements[s->current] != POISON) return 1;
+	if (s->current >= s->amount_of_elements) return 6;
+	for (int i = 0; i < s->current - 1; i++) if (s->elements[i] == POISON) return 2;
+	if (s->hashsum != stack_calc_hashsum(s)) return 3;
 	
+	return STACK_OK;
 }
 
-void stack_print(stack* s)
+char* stack_error_message(int error_code)
 {
-	assert(s);
 	
-	printf("Stack contains:\n");
-	stack_elem* i = s->first;
-	int n = 1;
-	while (i != s->current)
+	#define RET_CODE_(code)  case code: return #code;
+	
+	switch (error_code)
 	{
-		printf("%d: %d\n", n, i->value);
-		i = i->next;
-		n++;
+		RET_CODE_ (STACK_OK)
+		RET_CODE_ (STACK_TAIL_IS_NOT_POISON)
+		case STACK_ELEMENT_IS_POISON: 				return "STACK_ELEMENT_IS_POISON";
+		case STACK_HASHSUM_ERROR: 					return "STACK_HASHSUM_ERROR";
+		case ERROR_POP_FROM_EMPTY_STACK: 			return "ERROR_POP_TO_EMPTY_STACK";
+		case ERROR_PUSH_TO_FULL_STACK: 				return "ERROR_PUSH_TO_FULL_STACK";
+		case STACK_CURRENT_MORE_THAN_LENGTH: 		return "STACK_CURRENT_MORE_THAN_LENGTH";
+		default:									return "STACK_UNKNOWN_ERROR";
 	}
-	printf("%d: %d\n", n, i->value);
+	
+	#undef RET_CODE_
+	
+}
+void stack_help(const char* message)
+{
+	printf("%s\n", message);
+}
+
+void stack_print_dump(stack* s)
+{
+	FILE* dump = fopen("stack_dump.txt", "w");
+	
+	fprintf(dump,
+	"stack \"s\" (%s) [%p] {\n"
+	"	current = %d\n\n", stack_error_message(stack_check(s)), s, s->current);
+	
+	for (int i = 0; i < s->current; i++) fprintf(dump, "	elements[%d]: %lg\n", i, s->elements[i]);
+	fprintf(dump, "}\n");
+	
+	fclose(dump);
+}
+
+int terminate_message(int error)
+{
+	printf("\aProgram terminated with error message: %d\n" "Meow.\n", error);
+	return error;
 }

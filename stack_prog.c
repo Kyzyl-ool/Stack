@@ -1,23 +1,16 @@
 #include <stdio.h>
 #include "stack.h"
 
-const
-	int n = 10;
-
 int main()
 {
-	stack* s = stack_create();
-	
-	for (int i = 0; i < n; i++)
+	stack* s = stack_Construct(10);
+	if (stack_Pop(s) == POISON)
 	{
-		stack_put(s, i*8);
+		return terminate_message(ERROR_POP_FROM_EMPTY_STACK);
 	}
-	stack_print(s);
-	stack_pop(s);
-	stack_pop(s);
-	stack_pop(s);
-	stack_print(s);
+	stack_Push(s, 5);
+	stack_print_dump(s);
+	stack_Destroy(s);
 	
-	stack_destroy(s);
 	return 0;
 }
